@@ -1,0 +1,6 @@
+DrissionPage
+fastapi
+uvicorn
+wasmtime
+numpy
+curl_cffi

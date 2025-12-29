@@ -1,21 +1,9 @@
 import config
-import core
-import telebot
-import random
-import datetime
+import app.telegram.core as core
 import markup
 import sys
-from telebot import apihelper
 
-if config.PROXY_URL:
-    apihelper.proxy = {'https': config.PROXY_URL}
-
-bot = telebot.TeleBot(config.TOKEN, skip_pending=True)
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.send_message(message.chat.id, '👋🏻 Привет! Это бот для технической поддержки пользователей.\nЕсли у тебя есть какой-либо вопрос или проблема - нажми на кнопку <b>Написать запрос</b> и наши сотрудники в скором времени тебе ответят!', parse_mode='html', reply_markup=markup.markup_main())
-
+bot = None
 
 @bot.message_handler(commands=['agent'])
 def agent(message):
@@ -477,7 +465,3 @@ def callback_inline(call):
                 bot.answer_callback_query(call.id)
                 bot.stop_polling()
                 sys.exit()
-
-
-if __name__ == "__main__":
-    bot.polling(none_stop=True)
