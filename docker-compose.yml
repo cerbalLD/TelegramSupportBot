@@ -1,15 +1,18 @@
 services:
-  bot:
-    build: ./bot
-    container_name: bot
+  app:
+    build:
+      context: ./app
+    container_name: app
     network_mode: host
-    restart: unless-stopped
     volumes:
       - ./app:/usr/src/app
+
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
       TZ: Europe/Moscow
+
       "DB_PATH": "./store/db.sqlite"
       "TRANSFORMER_NAME": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
       "DB_RAG_PATH": "./ai/my_vector_db"
+    restart: unless-stopped
