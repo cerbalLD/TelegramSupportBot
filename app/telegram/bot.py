@@ -50,19 +50,19 @@ class TelegramBot:
         self.dp.message()(self.proccess_question)
         # колбеки
         # user
-        self.dp.message(F.data == "call_operator")(self.cb_call_operator)
+        self.dp.callback_query(F.data == "call_operator")(self.cb_call_operator)
         # agent
-        self.dp.message(F.data == "queue_questions")(self.cb_queue_questions)
-        self.dp.message(F.data == "cancel")(self.cd_cancel)
-        self.dp.message(F.data.startwith("queue_questions_page_"))(self.cd_queue_questions_page)
-        self.dp.message(F.data.startwith("question_"))(self.cd_question)
-        self.dp.message(F.data.startwith("answer_question_"))(self.cd_answer_question)
+        self.dp.callback_query(F.data == "queue_questions")(self.cb_queue_questions)
+        self.dp.callback_query(F.data == "cancel")(self.cd_cancel)
+        self.dp.callback_query(F.data.startswith("queue_questions_page_"))(self.cd_queue_questions_page)
+        self.dp.callback_query(F.data.startswith("question_"))(self.cd_question)
+        self.dp.callback_query(F.data.startswith("answer_question_"))(self.cd_answer_question)
         # admin
-        self.dp.message(F.data == "create_passes")(self.cb_create_passes)
-        self.dp.message(F.data == "list_passes")(self.cb_list_passes)
-        self.dp.message(F.data.startwith("list_passes_page_"))(self.cb_list_passes_page)
-        self.dp.message(F.data.startwith("pass_"))(self.cb_pass)
-        self.dp.message(F.data.startwith("delete_pass_"))(self.cb_delete_pass)
+        self.dp.callback_query(F.data == "create_passes")(self.cb_create_passes)
+        self.dp.callback_query(F.data == "list_passes")(self.cb_list_passes)
+        self.dp.callback_query(F.data.startswith("list_passes_page_"))(self.cb_list_passes_page)
+        self.dp.callback_query(F.data.startswith("pass"))(self.cb_pass)
+        self.dp.callback_query(F.data.startswith("delete_pass_"))(self.cb_delete_pass)
         
     async def cmd_help(self, message: types.Message):
         try:
@@ -70,7 +70,7 @@ class TelegramBot:
                 "/help - Это сообщение",
                 "/start - Приветсвие",
                 "/main_menu - Вернуться в главное меню",
-                "Прочто напиши вопрос сюда и мы ответим на него",
+                "Проcто напиши вопрос сюда и мы ответим на него",
                 "/password <password> - Чтобы стать агентом",
             ])
             await self.bot.send_message(
@@ -105,7 +105,7 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text=text,
-                    reply_markup=Keyboard.mainmenu(user),
+                    reply_markup=Keyboard.mainmenu(force=True),
                 )
                 return
             
@@ -238,11 +238,15 @@ class TelegramBot:
             if not self.is_agent(user_id=callback.from_user.id):
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
-                    text="У вас нет прав для на такое"
+                    text="У вас нет прав на такое"
                 )
                 return
             
-            questions = self.store.question.list(need_operator=True)
+            questions = self.store.question.list(is_need_operator=True)
+            
+            if not questions:
+                await callback.answer("В очереди нет вопросов")
+                return
             
             await self.bot.send_message(
                 chat_id=callback.from_user.id,
@@ -251,20 +255,18 @@ class TelegramBot:
             )
         except Exception as e:
             self.logger.error(f"[bot][cb_queue_questions] Ошибка отправки сообщения {callback.from_user.id}: {e}", exc_info=True)
-        finally:
-            await callback.answer()
     
     async def cd_queue_questions_page(self, callback: types.CallbackQuery):
         try:
             if not self.is_agent(user_id=callback.from_user.id):
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
-                    text="У вас нет прав для на такое"
+                    text="У вас нет прав на такое"
                 )
                 return
             
             page = int(callback.data.split("_")[-1])
-            questions = self.store.question.list(need_operator=True, order_by="created_at", offset=page * length)
+            questions = self.store.question.list(is_need_operator=True, order_by="created_at", offset=page * length)
             
             await self.bot.send_message(
                 chat_id=callback.from_user.id,
@@ -281,7 +283,7 @@ class TelegramBot:
             if not self.is_agent(user_id=callback.from_user.id):
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
-                    text="У вас нет прав для на такое"
+                    text="У вас нет прав на такое"
                 )
                 return
             
@@ -307,7 +309,7 @@ class TelegramBot:
             if not self.is_agent(user_id=callback.from_user.id):
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
-                    text="У вас нет прав для на такое"
+                    text="У вас нет прав на такое"
                 )
                 return
             
@@ -351,7 +353,6 @@ class TelegramBot:
             await self.bot.send_message(
                 chat_id=message.from_user.id,
                 text="Отправил",
-                reply_markup=Keyboard.cancel()
             )
         except Exception as e:
             self.logger.error(f"[bot][proccess_answer] Ошибка отправки сообщения {message.from_user.id}: {e}", exc_info=True)
@@ -362,20 +363,17 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
             await state.set_state(States.await_password)
-            await self.bot.send_message(
+            await callback.answer(
                 chat_id=callback.from_user.id,
-                text="Введите название агента",
+                text="Введите название\пароль для агента",
                 reply_markup=Keyboard.cancel()
             )
         except Exception as e:
             self.logger.error(f"[bot][cd_cancel] Ошибка отправки сообщения {callback.from_user.id}: {e}", exc_info=True)
-        finally:
-            await callback.answer()
             
     async def proccess_create_password(self, message: types.Message, state: FSMContext):
         try:
@@ -383,7 +381,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -392,20 +389,18 @@ class TelegramBot:
             await self.edit_or_send(
                 message=message,
                 user_id=message.from_user.id,
-                text=f"Создан одноразовый пароль для агента\n```{message.text}```",
-                reply_markup=Keyboard.cancel()
+                text=f"Создан одноразовый пароль для агента\n{message.text}"
             )
-            await self.cmd_start(message=message)
+            await self.cmd_start(message=message, state=state)
         except Exception as e:
             self.logger.error(f"[bot][proccess_create_password] Ошибка отправки сообщения {message.from_user.id}: {e}", exc_info=True)
-    
+            
     async def cb_list_passes(self, callback: types.CallbackQuery):
         try:
             if not self.is_admin(callback.from_user.id):
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -427,7 +422,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -450,7 +444,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -473,7 +466,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -483,7 +475,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=callback.from_user.id,
                     text="Пароль не найден",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -493,7 +484,6 @@ class TelegramBot:
                     await self.bot.send_message(
                         chat_id=callback.from_user.id,
                         text="Не получилось обнулить агента",
-                        reply_markup=Keyboard.cancel()
                     )
                     return
                 
@@ -519,7 +509,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -528,7 +517,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Неправильный формат команды нужно /add_admin <user_id>",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -545,14 +533,12 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Добавил",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
                     
             await self.bot.send_message(
                 chat_id=message.from_user.id,
                 text="Не получилось добавить",
-                reply_markup=Keyboard.cancel()
             )
         except Exception as e:
             self.logger.error(f"[bot][cmd_add_admin] Ошибка отправки сообщения {message.from_user.id}: {e}", exc_info=True)
@@ -572,7 +558,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Неправильный формат команды нужно /del_admin <user_id>",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -583,7 +568,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Пользователь не найден",
-                    reply_markup=Keyboard.cancel()
                 )
             else:
                 id = user.id
@@ -592,14 +576,12 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Удалил",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
                     
             await self.bot.send_message(
                 chat_id=message.from_user.id,
                 text="Не получилось удалить",
-                reply_markup=Keyboard.cancel()
             )
         except Exception as e:
             self.logger.error(f"[bot][cmd_del_admin] Ошибка отправки сообщения {message.from_user.id}: {e}", exc_info=True)
@@ -610,7 +592,6 @@ class TelegramBot:
                 await self.bot.send_message(
                     chat_id=message.from_user.id,
                     text="Вы не админ",
-                    reply_markup=Keyboard.cancel()
                 )
                 return
             
@@ -621,7 +602,6 @@ class TelegramBot:
             await self.bot.send_message(
                 chat_id=message.from_user.id,
                 text=text,
-                reply_markup=Keyboard.cancel()
             )
         except Exception as e:
             self.logger.error(f"[bot][cmd_list_admin] Ошибка отправки сообщения {message.from_user.id}: {e}", exc_info=True)
