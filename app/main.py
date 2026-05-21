@@ -1,75 +1,73 @@
-import json, os, asyncio
-from setup_logger import setup_logger
+import asyncio
+import inspect
 
-CONFIG_PATH = os.environ.get("CONFIG_PATH", "./app/config.json")
+from config import (
+    BOT_TOKEN,
+    DB_PATH,
+    USER_TOKEN,
+    main_logger,
+)
+from loggers import get_logger
 
-async def main():
-    # запуск логов
-    logger = setup_logger("main")
 
-    logger.info("[main] Initialization started...")
-    
-    # загруска настроек
-    if not os.path.isfile(CONFIG_PATH): 
-        raise FileNotFoundError("[main] File config.json not found")
+def try_log(name: str):
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            try:
+                main_logger.info(f"Initializing the {name}...")
+                result = func(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+            except Exception as e:
+                raise Exception(
+                    f"Error initializing the {name}: {str(e)}"
+                ) from e
+            else:
+                return result
+            finally:
+                main_logger.info(f"{name} initialization completed")
 
+        return wrapper
+
+    return decorator
+
+
+@try_log("AI")
+def setup_ai():
+    from ai.DeepSeek import DeepSeek
+    return DeepSeek(logger=main_logger, user_token=USER_TOKEN)
+
+
+@try_log("Store")
+def setup_store():
+    from store.store import Store
+    return Store(db_path=DB_PATH, logger=main_logger).init_db()
+
+
+def setup_bot(store, scraper, ai):
+    from telegram.main import TelegramBot
+    return TelegramBot(token=BOT_TOKEN, store=store, ai=ai, logger=get_logger("telegram"))
+
+
+async def start(bot):
+    main_logger.info("Running the bot...")
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
-            config = json.load(file)  
-            
-        # telegram
-        bot_token = config['bot_token']
-        list_admin_user_id = config['list_admin_user_id']
-        user_token = config['user_token']
-        
+        await bot.run()
     except Exception as e:
-        raise ValueError(f"[main] Invalid config.json file format: {str(e)}") from e
+        raise Exception(f"Error running the bot: {str(e)}") from e
     finally:
-        logger.info("[main] Reading settings completed")
-        
-    # store
-    try:
-        logger.info("[main] Initializing the database...")
-        from store.store import Store
-        dp_path = os.environ.get("DB_PATH", "./app/store/db.sqlite")
-        store = Store(logger=logger, db_path=dp_path)
-        store.init_db()
-    except Exception as e:
-        raise Exception(f"[main] Error initializing the database: {str(e)}") from e
-    finally:
-        logger.info("[main] Database initialization completed")
-        
-    # ai
-    try:
-        logger.info("[main] Initializing the AI...")
-        from ai.DeepSeek import DeepSeek
-        ai = DeepSeek(logger=logger, userToken=user_token)
-    except Exception as e:
-        raise Exception(f"[main] Error initializing the AI: {str(e)}") from e
-    finally:
-        logger.info("[main] AI initialization completed")
-    
-    # bot
-    try:
-        logger.info("[main] bot start...")
-        from telegram.bot import TelegramBot
-        bot = TelegramBot(
-            logger=logger,
-            token=bot_token,
-            store=store,
-            ai=ai,
-            list_admin_user_id=list_admin_user_id
-            )
-    except Exception as e:
-        raise Exception(f"[main] Error initializing bot: {str(e)}") from e
-    finally:
-        logger.info("[main] bot initializing completed")
-        
-    logger.info("[main] Initialization completed")
-    
-    await bot.start()
-    
-    logger.info("[main] END")
-    
+        main_logger.info("END")
+
+
+async def main() -> None:
+    main_logger.info("Initialization started...")
+
+    ai = await setup_ai()
+    store = await setup_store()
+    bot = setup_bot(store=store, ai=ai)
+
+    await start(bot)
+
+
 if __name__ == "__main__":
     asyncio.run(main())

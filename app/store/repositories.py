@@ -3,7 +3,7 @@ from typing import Type, TypeVar, Generic, Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.engine import Engine
 
-from store.models import Base, UsersTable, QuestionsTable, PassTable
+from store.models import Base, UsersTable, RequestTable, QuestionsTable
 
 ModelT = TypeVar("ModelT", bound=Base)
 
@@ -83,31 +83,24 @@ class UsersRepository(Repository[UsersTable]):
                 UsersTable.user_id == user_id
             ).first()
 
+
+class RequestRepository(Repository[RequestTable]):
+    def __init__(self, engine: Engine):
+        super().__init__(engine, RequestTable)
+
+    def get_by_user_id(self, user_id: int) -> Optional[RequestTable]:
+        with Session(self.engine) as s:
+            return s.query(RequestTable).filter(
+                RequestTable.user_id == user_id
+            ).first()
+
 class QuestionsRepository(Repository[QuestionsTable]):
     def __init__(self, engine: Engine):
         super().__init__(engine, QuestionsTable)
-        
-    def get_last_question_by_date(self, user_id: int) -> Optional[QuestionsTable]:
+
+    def ai_count_by_request(self, request_id: int) -> int:
         with Session(self.engine) as s:
-            return s.query(QuestionsTable).filter(user_id == user_id).order_by(QuestionsTable.created_at.desc()).first()
-        
-    def set_need_operator_for_last_question(self, user_id: int, need_operator: bool = True) -> bool:
-        with Session(self.engine) as s:
-            obj = s.query(QuestionsTable).filter(user_id == user_id).order_by(QuestionsTable.created_at.desc()).first()
-            if not obj:
-                return False
-            obj.is_need_operator = need_operator
-            s.commit()
-            return True
-    
-class PassRepository(Repository[PassTable]):
-    def __init__(self, engine: Engine):
-        super().__init__(engine, PassTable)
-        
-    def get_by_name(self, name: str) -> Optional[PassTable]:
-        with Session(self.engine) as s:
-            return s.query(PassTable).filter(PassTable.name == name).first()
-        
-    def get_by_user_id(self, user_id: int) -> Optional[PassTable]:
-        with Session(self.engine) as s:
-            return s.query(PassTable).filter(PassTable.user_id == user_id).first()
+            return s.query(QuestionsTable).filter(
+                QuestionsTable.request == request_id,
+                QuestionsTable.user_id.is_(None),
+            ).count()

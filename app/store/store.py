@@ -1,6 +1,7 @@
 # store/store.py
 import os
 from logging import Logger
+import re
 from typing import Optional
 from contextlib import contextmanager
 
@@ -8,7 +9,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
 from store.models import Base
-from store.repositories import UsersRepository, QuestionsRepository, PassRepository
+from store.repositories import UsersRepository, QuestionsRepository, RequestRepository
 from setup_logger import setup_logger
 
 def _fk_pragma_on_connect(dbapi_con, con_record):
@@ -35,7 +36,7 @@ class Store:
         # репозитории
         self.user = UsersRepository(self.engine)
         self.question = QuestionsRepository(self.engine)
-        self.pass_ = PassRepository(self.engine)
+        self.request = RequestRepository(self.engine)
 
     def init_db(self) -> None:
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)

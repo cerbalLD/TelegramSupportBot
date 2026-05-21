@@ -1,11 +1,15 @@
-2025-12-23 17:42:47,695 INFO [main] Initialization started...
-2025-12-23 17:42:47,696 INFO [main] Reading settings completed
-2025-12-23 17:42:47,696 INFO [main] Initializing the database...
-2025-12-23 17:42:48,570 INFO [main] Database initialization completed
-2025-12-23 17:42:48,571 INFO [main] Initializing the AI...
-2025-12-23 17:42:49,393 INFO [main] AI initialization completed
-2025-12-23 17:42:49,393 INFO [main] bot start...
-2025-12-23 17:43:29,494 INFO [main] bot initializing completed
-2025-12-23 17:43:29,494 INFO [main] Initialization completed
-2025-12-23 17:43:32,673 INFO [DeepSeek] Attempt 1/5 to call create_chat_session
-2025-12-23 17:43:33,312 INFO [DeepSeek] Attempt 1/5 to call chat_completion
+2026-01-30 18:31:10,556 INFO [main] Initialization started...
+2026-01-30 18:31:10,558 INFO [main] Reading settings completed
+2026-01-30 18:31:10,559 INFO [main] Initializing the database...
+2026-01-30 18:31:11,218 INFO [main] Database initialization completed
+2026-01-30 18:31:11,220 INFO [main] Initializing the AI...
+2026-01-30 18:31:12,019 INFO [main] AI initialization completed
+2026-01-30 18:31:12,019 INFO [main] bot start...
+2026-01-30 18:31:54,838 INFO [main] bot initializing completed
+2026-01-30 18:31:54,838 INFO [main] Initialization completed
+2026-01-30 18:33:48,456 ERROR [bot][cmd_password] Ошибка отправки сообщения 526884986: 'NoneType' object has no attribute 'is_agent'
+Traceback (most recent call last):
+  File "D:\GitHub\TelegramSupportBot\app\telegram\bot.py", line 203, in cmd_password
+    if self.store.user.get_by_user_id(user_id=message.from_user.id).is_agent:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'is_agent'
