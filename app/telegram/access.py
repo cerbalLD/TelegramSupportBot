@@ -6,8 +6,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 class TelegramWhitelistMiddleware(BaseMiddleware):
-    def __init__(self, allowed_user_ids: set[int], logger: Logger) -> None:
-        self.allowed_user_ids = allowed_user_ids
+    def __init__(self, logger: Logger) -> None:
         self.logger = logger
 
     async def __call__(
@@ -21,11 +20,6 @@ class TelegramWhitelistMiddleware(BaseMiddleware):
             self.logger.info("Telegram update without user id: event_type=%s", type(event).__name__)
             return await handler(event, data)
 
-        if user_id not in self.allowed_user_ids:
-            self.logger.warning("Blocked Telegram user: user_id=%s event_type=%s", user_id, type(event).__name__)
-            await _answer_denied(event)
-            return None
-
         self.logger.info("Accepted Telegram update: user_id=%s event_type=%s", user_id, type(event).__name__)
         return await handler(event, data)
 
@@ -36,6 +30,14 @@ def _event_user_id(event: TelegramObject) -> int | None:
     if isinstance(event, CallbackQuery) and event.from_user:
         return event.from_user.id
     return None
+
+
+def _is_support_user(user_id: int, data: dict[str, Any]) -> bool:
+    ctx = data.get("ctx")
+    if ctx is None:
+        return False
+    user = ctx.store.user.get_by_user_id(user_id)
+    return user is not None and bool(user.permissions > 0)
 
 
 async def _answer_denied(event: TelegramObject) -> None:

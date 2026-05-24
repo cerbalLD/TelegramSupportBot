@@ -3,7 +3,6 @@ import inspect
 
 from config import (
     BOT_TOKEN,
-    DB_PATH,
     USER_TOKEN,
     main_logger,
 )
@@ -35,16 +34,18 @@ def try_log(name: str):
 @try_log("AI")
 def setup_ai():
     from ai.DeepSeek import DeepSeek
-    return DeepSeek(logger=main_logger, user_token=USER_TOKEN)
+    return DeepSeek(logger=main_logger, userToken=USER_TOKEN)
 
 
 @try_log("Store")
 def setup_store():
     from store.store import Store
-    return Store(db_path=DB_PATH, logger=main_logger).init_db()
+    store = Store(db_path=r"./store/database.db", logger=main_logger)
+    store.init_db()
+    return store
 
 
-def setup_bot(store, scraper, ai):
+def setup_bot(store, ai):
     from telegram.main import TelegramBot
     return TelegramBot(token=BOT_TOKEN, store=store, ai=ai, logger=get_logger("telegram"))
 

@@ -6,11 +6,15 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 
-from config import TELEGRAM_ALLOWED_USER_IDS
+from config import TELEGRAM_ADMIN_USER_IDS
 from telegram.access import TelegramWhitelistMiddleware
 from telegram import keyboard
 from telegram.context import TelegramContext
 from telegram.edit_or_send import edit_or_send
+from telegram.admin import setup_admin_router
+from telegram.support import setup_support_router
+from telegram.user import setup_user_router
+from ai.RAG import RAG
 
 
 def setup_root_router() -> Router:
@@ -33,12 +37,11 @@ class TelegramBot:
         self,
         token: str,
         store,
-        scraper,
         ai,
         logger: Logger,
     ) -> None:
         self.logger = logger
-        self.ctx = TelegramContext(store=store, scraper=scraper, ai=ai, logger=logger)
+        self.ctx = TelegramContext(store=store, ai=ai, rag=RAG(), logger=logger)
 
         self.bot = Bot(token=token)
         self.dp = Dispatcher(storage=MemoryStorage())
@@ -48,17 +51,16 @@ class TelegramBot:
         self._include_routers()
 
     def _setup_access_control(self) -> None:
-        middleware = TelegramWhitelistMiddleware(TELEGRAM_ALLOWED_USER_IDS, logger=self.logger)
+        middleware = TelegramWhitelistMiddleware(logger=self.logger)
         self.dp.message.middleware(middleware)
         self.dp.callback_query.middleware(middleware)
-        self.logger.info("Telegram access middleware enabled: allowed_users_count=%s", len(TELEGRAM_ALLOWED_USER_IDS))
+        self.logger.info("Telegram access middleware enabled: allowed_users_count=%s", len(TELEGRAM_ADMIN_USER_IDS))
 
     def _include_routers(self) -> None:
         self.dp.include_router(setup_root_router())
-        self.dp.include_router(setup_video_router())
-        self.dp.include_router(setup_sourse_router())
-        self.dp.include_router(setup_background_router())
-        self.dp.include_router(setup_youtube_router())
+        self.dp.include_router(setup_admin_router())
+        self.dp.include_router(setup_support_router())
+        self.dp.include_router(setup_user_router())
         self.logger.info("Telegram routers included")
 
     async def run(self) -> None:

@@ -17,16 +17,10 @@ try:
     deepseek = config["deepseek"]
     USER_TOKEN = deepseek["user_token"]
 
-    store = config["store"]
-    DB_PATH = path.join(BASE_PATH, store["db_name"])
-
     telegram = config.get("telegram", {})
-    PAGE_SIZE = telegram["page_size"]
+    TELEGRAM_ADMIN_USER_IDS = telegram["admins_user_id"]
     BOT_TOKEN = telegram["bot_token"]
-    TELEGRAM_ALLOWED_USER_IDS = {
-        int(user_id)
-        for user_id in telegram.get("allowed_user_ids", [])
-    }
+    PAGE_SIZE = 10
 
     main_logger.info("Reading settings completed")
 except Exception as e:

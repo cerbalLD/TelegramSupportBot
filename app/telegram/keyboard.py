@@ -1,12 +1,10 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-def main_menu_kb(permision) -> ReplyKeyboardMarkup:
+
+def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="Создать видео")],
-            [KeyboardButton(text="Источники")],
-            [KeyboardButton(text="Фон")],
-            [KeyboardButton(text="YouTube")],
+            [KeyboardButton(text="Открытые запросы")],
         ],
         resize_keyboard=True,
     )

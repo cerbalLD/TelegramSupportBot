@@ -55,7 +55,7 @@ if __name__ == "__main__":
     if server_process:
         time.sleep(5)
         server_url = "http://localhost:8000/cookies?url=https://chat.deepseek.com"
-        cookie_file = "dsk/cookies.json"
+        cookie_file = "./dsk/cookies.json"
         get_and_save_cookies(server_url, cookie_file)
     else:
         print("Failed to start server.")

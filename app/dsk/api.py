@@ -278,7 +278,7 @@ class DeepSeekAPI:
                         if is_append:
                             if isinstance(data['v'], str):
                                 my_respounse['content'] += data['v']
-                            elif data.get("o", "") == "BATCH":
+                            elif data.get("o", "") in ["BATCH", "SET"]:
                                 if not my_respounse.get('content', None) or not my_respounse.get('next_parent_id', None):
                                     raise APIError(f"AI return None respounse")
                                 return my_respounse
