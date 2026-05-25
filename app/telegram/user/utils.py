@@ -8,3 +8,7 @@ class RequestStatus(IntEnum):
     AI = 1
     OPERATOR = 2
     CLOSED = 3
+
+operator_notification_threshold = [
+    1, 5, 10, 15
+]

@@ -12,31 +12,39 @@ import requests as pyreq
 ThinkingMode = Literal['detailed', 'simple', 'disabled']
 SearchMode = Literal['enabled', 'disabled']
 
+
 class DeepSeekError(Exception):
     """Base exception for all DeepSeek API errors"""
     pass
+
 
 class AuthenticationError(DeepSeekError):
     """Raised when authentication fails"""
     pass
 
+
 class RateLimitError(DeepSeekError):
     """Raised when API rate limit is exceeded"""
     pass
+
 
 class NetworkError(DeepSeekError):
     """Raised when network communication fails"""
     pass
 
+
 class CloudflareError(DeepSeekError):
     """Raised when Cloudflare blocks the request"""
     pass
 
+
 class APIError(DeepSeekError):
     """Raised when API returns an error response"""
+
     def __init__(self, message: str, status_code: Optional[int] = None):
         super().__init__(message)
         self.status_code = status_code
+
 
 class DeepSeekAPI:
     BASE_URL = "https://chat.deepseek.com/api/v0"
@@ -64,7 +72,8 @@ class DeepSeekAPI:
                 cookie_data = json.load(f)
                 self.cookies = cookie_data.get('cookies', {})
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"\033[93mWarning: Could not load cookies from {cookies_path}: {e}\033[0m", file=sys.stderr)
+            print(
+                f"\033[93mWarning: Could not load cookies from {cookies_path}: {e}\033[0m", file=sys.stderr)
             self.cookies = {}
 
     def _get_headers(self, pow_response: Optional[str] = None) -> Dict[str, str]:
@@ -106,16 +115,17 @@ class DeepSeekAPI:
                 self.cookies = cookie_data.get('cookies', {})
 
         except Exception as e:
-            print(f"\033[93mWarning: Failed to refresh cookies: {e}\033[0m", file=sys.stderr)
+            print(
+                f"\033[93mWarning: Failed to refresh cookies: {e}\033[0m", file=sys.stderr)
 
-    def _make_request(self, 
-                      method: str, 
-                      endpoint: str, 
-                      json_data: Dict[str, Any] = None, 
-                      pow_type: Optional[str] = None, 
-                      pow_required: bool = False, 
+    def _make_request(self,
+                      method: str,
+                      endpoint: str,
+                      json_data: Dict[str, Any] = None,
+                      pow_type: Optional[str] = None,
+                      pow_required: bool = False,
                       multipart: list = None,
-                      params: Dict[str, Any] = None, 
+                      params: Dict[str, Any] = None,
                       ) -> Any:
         """Makes an API request with optional PoW handling and retries"""
         url = f"{self.BASE_URL}{endpoint}"
@@ -145,7 +155,8 @@ class DeepSeekAPI:
 
                 # Check if we hit Cloudflare protection
                 if "<!DOCTYPE html>" in response.text and "Just a moment" in response.text:
-                    print("\033[93mWarning: Cloudflare protection detected. Bypassing...\033[0m", file=sys.stderr)
+                    print(
+                        "\033[93mWarning: Cloudflare protection detected. Bypassing...\033[0m", file=sys.stderr)
                     if retry_count < max_retries - 1:
                         self._refresh_cookies()  # Refresh cookies
                         retry_count += 1
@@ -153,13 +164,16 @@ class DeepSeekAPI:
 
                 # Handle other response codes
                 if response.status_code == 401:
-                    raise AuthenticationError("Invalid or expired authentication token")
+                    raise AuthenticationError(
+                        "Invalid or expired authentication token")
                 elif response.status_code == 429:
                     raise RateLimitError("API rate limit exceeded")
                 elif response.status_code >= 500:
-                    raise APIError(f"Server error occurred: {response.text}", response.status_code)
+                    raise APIError(
+                        f"Server error occurred: {response.text}", response.status_code)
                 elif response.status_code != 200:
-                    raise APIError(f"API request failed: {response.text}", response.status_code)
+                    raise APIError(
+                        f"API request failed: {response.text}", response.status_code)
 
                 return response.json()
 
@@ -168,7 +182,8 @@ class DeepSeekAPI:
             except json.JSONDecodeError:
                 raise APIError("Invalid JSON response from server")
 
-        raise APIError("Failed to bypass Cloudflare protection after multiple attempts")
+        raise APIError(
+            "Failed to bypass Cloudflare protection after multiple attempts")
 
     def _get_pow_challenge(self, pow_type) -> Dict[str, Any]:
         try:
@@ -190,21 +205,24 @@ class DeepSeekAPI:
                 {'character_id': None},
                 '/api/v0/chat/completion'
             )
-            
-            if response.get('code', 0) == 40003: raise AuthenticationError("Invalid or expired authentication token")
+
+            if response.get('code', 0) == 40003:
+                raise AuthenticationError(
+                    "Invalid or expired authentication token")
             return response['data']['biz_data']['id']
         except AuthenticationError as e:
             raise AuthenticationError(e)
         except KeyError:
-            raise APIError("Invalid session creation response format from server")
+            raise APIError(
+                "Invalid session creation response format from server")
 
     def chat_completion(self,
-                    chat_session_id: str,
-                    prompt: str,
-                    parent_message_id: Optional[str] = None,
-                    ref_file_ids: list = [],
-                    thinking_enabled: bool = False,
-                    search_enabled: bool = False) -> Generator[Dict[str, Any], None, None]:
+                        chat_session_id: str,
+                        prompt: str,
+                        parent_message_id: Optional[str] = None,
+                        ref_file_ids: list = [],
+                        thinking_enabled: bool = False,
+                        search_enabled: bool = False) -> Generator[Dict[str, Any], None, None]:
         """
         Send a message and get streaming response
 
@@ -256,22 +274,25 @@ class DeepSeekAPI:
             )
 
             if response.status_code != 200:
-                error_text = next(response.iter_lines(), b'').decode('utf-8', 'ignore')
+                error_text = next(response.iter_lines(),
+                                  b'').decode('utf-8', 'ignore')
                 if response.status_code == 401:
-                    raise AuthenticationError("Invalid or expired authentication token")
+                    raise AuthenticationError(
+                        "Invalid or expired authentication token")
                 elif response.status_code == 429:
                     raise RateLimitError("API rate limit exceeded")
                 else:
-                    raise APIError(f"API request failed: {error_text}", response.status_code)
+                    raise APIError(
+                        f"API request failed: {error_text}", response.status_code)
 
             # my_respounse = {
             #     'next_parent_id': None,
             #     'content': ''
             # }
             my_respounse = {}
-            
+
             is_append = False
-            
+
             for chunk in response.iter_lines():
                 try:
                     if data := self._validate_chunk(chunk):
@@ -283,17 +304,18 @@ class DeepSeekAPI:
                                     raise APIError(f"AI return None respounse")
                                 return my_respounse
                         elif isinstance(data['v'], dict) and data.get('v', {}).get('response') is not None:
-                            my_respounse['next_parent_id'] = data.get('v', {}).get('response').get('message_id')
+                            my_respounse['next_parent_id'] = data.get(
+                                'v', {}).get('response').get('message_id')
                         elif not is_append and data.get("o", "") == "APPEND":
                             my_respounse['content'] = data['v']
                             is_append = True
-                                
-                        
+
                 except Exception as e:
                     raise APIError(f"Error parsing response chunk: {str(e)}")
-                
+
         except requests.exceptions.RequestException as e:
-            raise NetworkError(f"Network error occurred during streaming: {str(e)}")
+            raise NetworkError(
+                f"Network error occurred during streaming: {str(e)}")
 
     def _validate_chunk(self, chunk: bytes) -> Optional[Dict[str, Any]]:
         """Parse a SSE chunk from the API response"""
@@ -305,25 +327,25 @@ class DeepSeekAPI:
                 data = json.loads(chunk[6:])
                 if 'v' in data and data['v']:
                     return data
-                
+
         except json.JSONDecodeError:
             raise APIError("Invalid JSON in response chunk")
         except Exception as e:
             raise APIError(f"Error parsing chunk: {str(e)}")
 
         return None
-    
+
     def upload_file(self, file_path: str) -> Optional[list[str]]:
         """Creates a new chat session and returns the session ID"""
         try:
             mime = CurlMime()
             mime.addpart(
-                name = "file",
+                name="file",
                 content_type="application/octet-stream",
                 filename=Path(file_path).name,
                 local_path=file_path
-                )
-            
+            )
+
             response = self._make_request(
                 method='POST',
                 endpoint='/file/upload_file',
@@ -331,7 +353,7 @@ class DeepSeekAPI:
                 pow_type='/api/v0/file/upload_file',
                 pow_required=True
             )
-            
+
             status = response['data']['biz_data']['status']
             file_id = response['data']['biz_data']['id']
             if status == 'SUCCESS':
@@ -341,23 +363,23 @@ class DeepSeekAPI:
             return None
         except KeyError:
             raise APIError("Invalid upload file response format from server")
-        
+
     def fetch_files(self, file_ids: list[str] | str) -> list[str | None]:
         """Fetches file metadata for given file IDs"""
         try:
             retry_count = 0
             is_success_list = []
-            
+
             file_ids_str = file_ids
             file_ids_len = 1
             if isinstance(file_ids, list):
                 file_ids_str = ','.join(file_ids)
                 file_ids_len = len(file_ids)
-            
+
             while len(is_success_list) < file_ids_len and retry_count < 5:
                 retry_count += 1
                 time.sleep(2*retry_count)
-                
+
                 response = self._make_request(
                     'GET',
                     '/file/fetch_files',
@@ -365,11 +387,11 @@ class DeepSeekAPI:
                     # pow_type='/api/v0/file/fetch_files',
                     # pow_required=True
                 )
-                
+
                 for file in response['data']['biz_data']['files']:
                     if file['status'] == 'SUCCESS' and file['id'] not in is_success_list:
                         is_success_list.append(file['id'])
-                
+
             return is_success_list
         except KeyError:
             raise APIError("Invalid fetch files response format from server")

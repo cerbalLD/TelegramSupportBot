@@ -83,6 +83,23 @@ class UsersRepository(Repository[UsersTable]):
                 UsersTable.user_id == user_id
             ).first()
 
+    def set_permissions_by_user_id(self, user_id: int, permissions: int) -> UsersTable:
+        with Session(self.engine) as s:
+            user = s.query(UsersTable).filter(
+                UsersTable.user_id == user_id).first()
+            if user is None:
+                user = UsersTable(user_id=user_id, permissions=permissions)
+                s.add(user)
+            else:
+                user.permissions = permissions
+            s.commit()
+            s.refresh(user)
+            return user
+        
+    def list_operators(self) -> List[UsersTable]:
+        with Session(self.engine) as s:
+            return s.query(UsersTable).filter(UsersTable.permissions > 0).all()
+
 
 class RequestRepository(Repository[RequestTable]):
     def __init__(self, engine: Engine):
@@ -92,7 +109,23 @@ class RequestRepository(Repository[RequestTable]):
         with Session(self.engine) as s:
             return s.query(RequestTable).filter(
                 RequestTable.user_id == user_id
-            ).first()
+            ).order_by(RequestTable.id.desc()).first()
+
+    def list_open(self, *, limit: int = 10, offset: int = 0) -> List[RequestTable]:
+        with Session(self.engine) as s:
+            return (
+                s.query(RequestTable)
+                .filter(RequestTable.status != 3)
+                .order_by(RequestTable.id.desc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+
+    def count_need_operator(self) -> int:
+        with Session(self.engine) as s:
+            return s.query(RequestTable).filter(RequestTable.status > 0).count()
+
 
 class QuestionsRepository(Repository[QuestionsTable]):
     def __init__(self, engine: Engine):
@@ -104,3 +137,12 @@ class QuestionsRepository(Repository[QuestionsTable]):
                 QuestionsTable.request == request_id,
                 QuestionsTable.user_id.is_(None),
             ).count()
+
+    def list_by_request(self, request_id: int) -> List[QuestionsTable]:
+        with Session(self.engine) as s:
+            return (
+                s.query(QuestionsTable)
+                .filter(QuestionsTable.request == request_id)
+                .order_by(QuestionsTable.id)
+                .all()
+            )

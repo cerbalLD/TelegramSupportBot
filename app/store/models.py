@@ -1,8 +1,5 @@
-# store/models.py
-from urllib import request
-
-from sqlalchemy import Integer, TIMESTAMP, text, Boolean, Text, ForeignKey
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import Integer, Text, ForeignKey
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -15,7 +12,7 @@ class Base(DeclarativeBase):
 
 
 class UsersTable(Base):
-    __tablename__ = "User"
+    __tablename__ = "Users"
 
     # телеграм id
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
@@ -34,14 +31,15 @@ class RequestTable(Base):
         Integer, ForeignKey("Question.id"), nullable=True)
     # для ии
     session_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    parent_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    parent_id: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
 class QuestionsTable(Base):
     __tablename__ = "Question"
 
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("Users.user_id"), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("Users.user_id"), nullable=True)
+    author_type: Mapped[str] = mapped_column(Text, nullable=False, default="user")
     text: Mapped[str] = mapped_column(Text, nullable=True)
     previous_question: Mapped[int] = mapped_column(
         Integer, ForeignKey("Question.id"), nullable=True)
