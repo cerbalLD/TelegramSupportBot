@@ -16,6 +16,9 @@ def setup_router() -> Router:
         if not user:
             user_row_id = ctx.store.user.create(user_id=telegram_user_id)
             user = ctx.store.user.get(user_row_id)
+        elif user.permissions > 0:
+            message.answer("Вы не можете создать запрос, вы не пользователь")
+            return
 
         request = ctx.store.request.get_by_user_id(
             user_id=telegram_user_id)
@@ -26,7 +29,8 @@ def setup_router() -> Router:
             ctx.store.request.update(
                 request_id, session_id=session_id, parent_id=parent_id)
             request = ctx.store.request.get(request_id)
-        elif not request.session_id:
+        manual_mode = request.status == utils.RequestStatus.OPERATOR
+        if not manual_mode and not request.session_id:
             session_id, parent_id = await ctx.ai.create_thread()
             ctx.store.request.update(
                 request.id, session_id=session_id, parent_id=parent_id)
@@ -41,7 +45,23 @@ def setup_router() -> Router:
         )
         question = ctx.store.question.get(question_id)
         ctx.store.request.update(
-            request.id, last_message_id=question_id, status=utils.RequestStatus.OPEN)
+            request.id,
+            last_message_id=question_id,
+            status=utils.RequestStatus.OPERATOR if manual_mode else utils.RequestStatus.OPEN,
+        )
+
+        if manual_mode:
+            await send_all_operator(
+                message,
+                ctx,
+                f"Новое сообщение в запросе #{request.id} от пользователя {telegram_user_id}",
+            )
+            ctx.logger.info(
+                "User message stored for operator request_id=%s user_id=%s",
+                request.id,
+                telegram_user_id,
+            )
+            return
 
         relevant_texts = ctx.rag.find_relevant_chunks(
             question.text) if question.text else []
@@ -67,7 +87,7 @@ def setup_router() -> Router:
         except Exception as e:
             ctx.logger.critical(f"AI error respouns: {e}")
 
-        if text := respouns.get("content"):
+        if text := (respouns or {}).get("content"):
             ctx.store.request.update(
                 request.id,
                 parent_id=respouns["next_parent_id"],
@@ -76,7 +96,7 @@ def setup_router() -> Router:
                 request.id)
             if ai_count_answer >= 3 \
                     and ctx.store.request.count_need_operator() in utils.operator_notification_threshold:
-                send_all_operator(
+                await send_all_operator(
                     message, ctx, f"Запросов уже {ctx.store.request.count_need_operator()}")
             await message.answer(
                 text=text,
@@ -100,7 +120,7 @@ def setup_router() -> Router:
             ctx.logger.debug(f"AI responded: {text}")
             return
         ctx.logger.error(f"AI not responded: {respouns}")
-        send_all_operator(message, ctx, "ИИ не ответил")
+        await send_all_operator(message, ctx, "ИИ не ответил")
 
 
     # @router.callback_query(F.data == "call_operator")
@@ -119,9 +139,11 @@ def setup_router() -> Router:
     return router
 
 
-async def send_all_operator(message, ctx, text):
-    for operator in ctx.store.user.list_operators() + TELEGRAM_ADMIN_USER_IDS:
+async def send_all_operator(message: Message, ctx: TelegramContext, text):
+    operator_user_ids = {operator.user_id for operator in ctx.store.user.list_operators()}
+    operator_user_ids.update(TELEGRAM_ADMIN_USER_IDS)
+    for operator_user_id in operator_user_ids:
         await message.bot.send_message(
-            chat_id=operator.user_id,
+            chat_id=operator_user_id,
             text=text,
         )

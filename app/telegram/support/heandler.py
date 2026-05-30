@@ -1,14 +1,23 @@
+from dataclasses import dataclass
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from config import PAGE_SIZE
+from store.models import QuestionsTable
 from telegram.context import TelegramContext
 from telegram.edit_or_send import edit_or_send
 from telegram.states import SupportAnswerState
 from telegram.support import keyboard
 from telegram.support.utils import author_label, is_support_user, status_label
 from telegram.user.utils import RequestStatus
+
+
+@dataclass
+class HistoryPage:
+    question: QuestionsTable | None
+    answers: list[QuestionsTable]
 
 
 def setup_router() -> Router:
@@ -54,6 +63,15 @@ def setup_router() -> Router:
         await _send_request_history(callback.message, ctx, request_id)
         await callback.answer()
 
+    @router.callback_query(F.data.startswith("support:history:"))
+    async def view_request_history_page(callback: CallbackQuery, ctx: TelegramContext, state: FSMContext) -> None:
+        if not await _is_allowed(callback, ctx):
+            return
+        await state.clear()
+        _, _, request_id_raw, page_raw = callback.data.split(":", 3)
+        await _send_request_history(callback.message, ctx, int(request_id_raw), page=int(page_raw))
+        await callback.answer()
+
     @router.callback_query(F.data.startswith("support:answer:"))
     async def answer_request(callback: CallbackQuery, ctx: TelegramContext, state: FSMContext) -> None:
         if not await _is_allowed(callback, ctx):
@@ -72,7 +90,7 @@ def setup_router() -> Router:
         )
         await callback.answer()
 
-    @router.message(SupportAnswerState.waiting_answer, F.text)
+    @router.message(SupportAnswerState.waiting_answer)
     async def send_answer(message: Message, ctx: TelegramContext, state: FSMContext) -> None:
         if not await _is_allowed(message, ctx):
             return
@@ -84,10 +102,21 @@ def setup_router() -> Router:
             await message.answer("Запрос не найден или уже закрыт.")
             return
 
+        try:
+            await message.copy_to(chat_id=request.user_id)
+        except Exception as error:
+            ctx.logger.exception(
+                "Support answer copy failed request_id=%s user_id=%s",
+                request.id,
+                request.user_id,
+            )
+            await message.answer(f"Не получилось отправить это сообщение пользователю: {error}")
+            return
+
         question_id = ctx.store.question.create(
             user_id=None,
             author_type="operator",
-            text=message.text,
+            text=_message_history_text(message),
             previous_question=request.last_message_id,
             request=request.id,
         )
@@ -97,7 +126,6 @@ def setup_router() -> Router:
             last_message_id=question_id,
         )
 
-        await message.bot.send_message(chat_id=request.user_id, text=message.text)
         await state.clear()
         await message.answer(f"Ответ отправлен пользователю {request.user_id}.")
         ctx.logger.info("Support answered request_id=%s user_id=%s", request.id, request.user_id)
@@ -132,28 +160,96 @@ async def _send_open_requests(message: Message, ctx: TelegramContext, page: int)
     )
 
 
-async def _send_request_history(message: Message, ctx: TelegramContext, request_id: int) -> None:
+async def _send_request_history(message: Message, ctx: TelegramContext, request_id: int, page: int | None = None) -> None:
     request = ctx.store.request.get(request_id)
     if request is None:
         await edit_or_send(message, "Запрос не найден.")
         return
 
     questions = ctx.store.question.list_by_request(request.id)
+    pages = _build_history_pages(questions)
+    total_pages = max(len(pages), 1)
+    page = total_pages - 1 if page is None else min(max(page, 0), total_pages - 1)
     lines = [
         f"Запрос #{request.id}",
         f"Пользователь: {request.user_id}",
         f"Статус: {status_label(request.status)}",
+        f"Страница: {page + 1}/{total_pages}",
         "",
-        "История:",
     ]
-    if not questions:
+
+    if not pages:
         lines.append("Сообщений пока нет.")
-    for question in questions:
-        text = question.text or ""
-        lines.append(f"{author_label(question.author_type)}: {text}")
-    # TODO сделать пагинацию истории
+    else:
+        history_page = pages[page]
+        question_text = (
+            _question_text(history_page.question)
+            if history_page.question is not None
+            else "Нет вопроса пользователя."
+        )
+        lines.extend(
+            [
+                "Вопрос пользователя:",
+                question_text,
+                "",
+                "Ответ:",
+            ]
+        )
+        if not history_page.answers:
+            lines.append("Ответа пока нет.")
+        else:
+            for answer in history_page.answers:
+                lines.extend([f"{author_label(answer.author_type)}:", _question_text(answer)])
+
     await edit_or_send(
         message,
         "\n".join(lines),
-        reply_markup=keyboard.request_actions_kb(request.id),
+        reply_markup=keyboard.request_actions_kb(request.id, page=page, total_pages=total_pages),
     )
+
+
+def _build_history_pages(questions: list[QuestionsTable]) -> list[HistoryPage]:
+    pages: list[HistoryPage] = []
+    current_page: HistoryPage | None = None
+    for question in questions:
+        if question.author_type == "user":
+            current_page = HistoryPage(question=question, answers=[])
+            pages.append(current_page)
+            continue
+
+        if current_page is None:
+            current_page = HistoryPage(question=None, answers=[])
+            pages.append(current_page)
+        current_page.answers.append(question)
+    return pages
+
+
+def _message_history_text(message: Message) -> str:
+    if message.text:
+        return message.text
+    label = _message_type_label(message.content_type)
+    if message.caption:
+        return f"[{label}]\n{message.caption}"
+    return f"[{label}]"
+
+
+def _message_type_label(content_type: str) -> str:
+    return {
+        "audio": "Аудио",
+        "animation": "Анимация",
+        "document": "Документ",
+        "photo": "Фото",
+        "sticker": "Стикер",
+        "video": "Видео",
+        "video_note": "Видеосообщение",
+        "voice": "Голосовое сообщение",
+        "contact": "Контакт",
+        "venue": "Место",
+        "location": "Геопозиция",
+        "poll": "Опрос",
+        "dice": "Кубик",
+    }.get(content_type, content_type)
+
+
+def _question_text(question: QuestionsTable) -> str:
+    return question.text or "[Пустое сообщение]"
