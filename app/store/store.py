@@ -5,7 +5,7 @@ import re
 from typing import Optional
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session
 
 from store.models import Base
@@ -41,6 +41,34 @@ class Store:
     def init_db(self) -> None:
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
         Base.metadata.create_all(self.engine)
+        self._migrate_db()
+
+    def _migrate_db(self) -> None:
+        inspector = inspect(self.engine)
+        if "Question" not in inspector.get_table_names():
+            return
+
+        existing_columns = {column["name"] for column in inspector.get_columns("Question")}
+        missing_columns = {
+            "telegram_chat_id": "INTEGER",
+            "telegram_message_id": "INTEGER",
+            "content_type": "TEXT",
+        }
+        columns_to_add = [
+            (name, column_type)
+            for name, column_type in missing_columns.items()
+            if name not in existing_columns
+        ]
+        if not columns_to_add:
+            return
+
+        with self.engine.begin() as connection:
+            for column_name, column_type in columns_to_add:
+                connection.execute(text(f'ALTER TABLE "Question" ADD COLUMN {column_name} {column_type}'))
+        self.logger.info(
+            "Database migrated: added Question columns %s",
+            ", ".join(column_name for column_name, _ in columns_to_add),
+        )
 
     def drop_all(self) -> None:
         Base.metadata.drop_all(self.engine)

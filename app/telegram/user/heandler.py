@@ -1,36 +1,45 @@
-from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message
+from aiogram import Router
+from aiogram.types import Message
 
 from config import TELEGRAM_ADMIN_USER_IDS
 from telegram.context import TelegramContext
-from telegram.user import keyboard, utils
+from telegram.message_summary import message_content_type, message_history_text
+from telegram.user import utils
 
 
 def setup_router() -> Router:
     router = Router()
 
-    @router.message(F.text)
+    @router.message()
     async def user_request(message: Message, ctx: TelegramContext) -> None:
+        if message.from_user is None:
+            return
         telegram_user_id = message.from_user.id
+        if telegram_user_id in TELEGRAM_ADMIN_USER_IDS:
+            await message.answer("Вы не можете создать запрос, вы не пользователь")
+            return
+
         user = ctx.store.user.get_by_user_id(user_id=telegram_user_id)
+        if user and user.permissions > 0:
+            await message.answer("Вы не можете создать запрос, вы не пользователь")
+            return
         if not user:
             user_row_id = ctx.store.user.create(user_id=telegram_user_id)
             user = ctx.store.user.get(user_row_id)
-        elif user.permissions > 0:
-            message.answer("Вы не можете создать запрос, вы не пользователь")
-            return
+
+        content_type = message_content_type(message)
+        can_use_ai = content_type == "text" and bool(message.text)
 
         request = ctx.store.request.get_by_user_id(
             user_id=telegram_user_id)
         if request is None or request.status == utils.RequestStatus.CLOSED:
             ctx.logger.info(f"New request: {telegram_user_id}")
             request_id = ctx.store.request.create(user_id=telegram_user_id)
-            session_id, parent_id = await ctx.ai.create_thread()
-            ctx.store.request.update(
-                request_id, session_id=session_id, parent_id=parent_id)
             request = ctx.store.request.get(request_id)
         manual_mode = request.status == utils.RequestStatus.OPERATOR
-        if not manual_mode and not request.session_id:
+        needs_operator = manual_mode or not can_use_ai
+
+        if not needs_operator and not request.session_id:
             session_id, parent_id = await ctx.ai.create_thread()
             ctx.store.request.update(
                 request.id, session_id=session_id, parent_id=parent_id)
@@ -39,7 +48,10 @@ def setup_router() -> Router:
         ctx.logger.info(f"New question: {telegram_user_id}")
         question_id = ctx.store.question.create(
             user_id=telegram_user_id,
-            text=message.text,
+            text=message_history_text(message),
+            telegram_chat_id=message.chat.id,
+            telegram_message_id=message.message_id,
+            content_type=content_type,
             previous_question=request.last_message_id,
             request=request.id,
         )
@@ -47,14 +59,15 @@ def setup_router() -> Router:
         ctx.store.request.update(
             request.id,
             last_message_id=question_id,
-            status=utils.RequestStatus.OPERATOR if manual_mode else utils.RequestStatus.OPEN,
+            status=utils.RequestStatus.OPERATOR if needs_operator else utils.RequestStatus.OPEN,
         )
 
-        if manual_mode:
+        if needs_operator:
             await send_all_operator(
                 message,
                 ctx,
                 f"Новое сообщение в запросе #{request.id} от пользователя {telegram_user_id}",
+                copy_source=not can_use_ai,
             )
             ctx.logger.info(
                 "User message stored for operator request_id=%s user_id=%s",
@@ -64,7 +77,7 @@ def setup_router() -> Router:
             return
 
         relevant_texts = ctx.rag.find_relevant_chunks(
-            question.text) if question.text else []
+            message.text) if message.text else []
         promt = "\n".join([
             "Ты бот поддержки Freetato VPN.",
             "Ты отвечаешь на вопросы пользователя которые связаны только с работой Freetato VPN.",
@@ -139,7 +152,7 @@ def setup_router() -> Router:
     return router
 
 
-async def send_all_operator(message: Message, ctx: TelegramContext, text):
+async def send_all_operator(message: Message, ctx: TelegramContext, text: str, copy_source: bool = False) -> None:
     operator_user_ids = {operator.user_id for operator in ctx.store.user.list_operators()}
     operator_user_ids.update(TELEGRAM_ADMIN_USER_IDS)
     for operator_user_id in operator_user_ids:
@@ -147,3 +160,14 @@ async def send_all_operator(message: Message, ctx: TelegramContext, text):
             chat_id=operator_user_id,
             text=text,
         )
+        if not copy_source:
+            continue
+        try:
+            await message.copy_to(chat_id=operator_user_id)
+        except Exception:
+            ctx.logger.exception(
+                "Failed to copy user message to operator_id=%s chat_id=%s message_id=%s",
+                operator_user_id,
+                message.chat.id,
+                message.message_id,
+            )

@@ -26,7 +26,12 @@ def open_requests_kb(requests: list[RequestTable], page: int, page_size: int) ->
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def request_actions_kb(request_id: int, page: int, total_pages: int) -> InlineKeyboardMarkup:
+def request_actions_kb(
+    request_id: int,
+    page: int,
+    total_pages: int,
+    has_attachments: bool = False,
+) -> InlineKeyboardMarkup:
     keyboard: list[list[InlineKeyboardButton]] = []
     if total_pages > 1:
         keyboard.append(
@@ -44,6 +49,16 @@ def request_actions_kb(request_id: int, page: int, total_pages: int) -> InlineKe
                         else "support:noop"
                     ),
                 ),
+            ]
+        )
+
+    if has_attachments:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="Показать вложения",
+                    callback_data=f"support:attachments:{request_id}:{page}",
+                )
             ]
         )
 

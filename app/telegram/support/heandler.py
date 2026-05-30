@@ -8,6 +8,7 @@ from config import PAGE_SIZE
 from store.models import QuestionsTable
 from telegram.context import TelegramContext
 from telegram.edit_or_send import edit_or_send
+from telegram.message_summary import message_content_type, message_history_text
 from telegram.states import SupportAnswerState
 from telegram.support import keyboard
 from telegram.support.utils import author_label, is_support_user, status_label
@@ -72,6 +73,32 @@ def setup_router() -> Router:
         await _send_request_history(callback.message, ctx, int(request_id_raw), page=int(page_raw))
         await callback.answer()
 
+    @router.callback_query(F.data.startswith("support:attachments:"))
+    async def show_request_attachments(callback: CallbackQuery, ctx: TelegramContext) -> None:
+        if not await _is_allowed(callback, ctx):
+            return
+        _, _, request_id_raw, page_raw = callback.data.split(":", 3)
+        request = ctx.store.request.get(int(request_id_raw))
+        if request is None:
+            await callback.answer("Запрос не найден", show_alert=True)
+            return
+
+        pages = _build_history_pages(ctx.store.question.list_by_request(request.id))
+        if not pages:
+            await callback.answer("Вложений нет", show_alert=True)
+            return
+
+        page = min(max(int(page_raw), 0), len(pages) - 1)
+        copied_count = 0
+        for question in _page_attachments(pages[page]):
+            if await _copy_history_message(callback.message, ctx, question):
+                copied_count += 1
+
+        if copied_count:
+            await callback.answer("Вложения отправлены")
+            return
+        await callback.answer("Не получилось отправить вложения", show_alert=True)
+
     @router.callback_query(F.data.startswith("support:answer:"))
     async def answer_request(callback: CallbackQuery, ctx: TelegramContext, state: FSMContext) -> None:
         if not await _is_allowed(callback, ctx):
@@ -116,7 +143,10 @@ def setup_router() -> Router:
         question_id = ctx.store.question.create(
             user_id=None,
             author_type="operator",
-            text=_message_history_text(message),
+            text=message_history_text(message),
+            telegram_chat_id=message.chat.id,
+            telegram_message_id=message.message_id,
+            content_type=message_content_type(message),
             previous_question=request.last_message_id,
             request=request.id,
         )
@@ -204,7 +234,12 @@ async def _send_request_history(message: Message, ctx: TelegramContext, request_
     await edit_or_send(
         message,
         "\n".join(lines),
-        reply_markup=keyboard.request_actions_kb(request.id, page=page, total_pages=total_pages),
+        reply_markup=keyboard.request_actions_kb(
+            request.id,
+            page=page,
+            total_pages=total_pages,
+            has_attachments=bool(pages and _page_attachments(pages[page])),
+        ),
     )
 
 
@@ -224,31 +259,38 @@ def _build_history_pages(questions: list[QuestionsTable]) -> list[HistoryPage]:
     return pages
 
 
-def _message_history_text(message: Message) -> str:
-    if message.text:
-        return message.text
-    label = _message_type_label(message.content_type)
-    if message.caption:
-        return f"[{label}]\n{message.caption}"
-    return f"[{label}]"
+def _page_attachments(page: HistoryPage) -> list[QuestionsTable]:
+    messages = [page.question, *page.answers]
+    return [message for message in messages if message is not None and _has_attachment(message)]
 
 
-def _message_type_label(content_type: str) -> str:
-    return {
-        "audio": "Аудио",
-        "animation": "Анимация",
-        "document": "Документ",
-        "photo": "Фото",
-        "sticker": "Стикер",
-        "video": "Видео",
-        "video_note": "Видеосообщение",
-        "voice": "Голосовое сообщение",
-        "contact": "Контакт",
-        "venue": "Место",
-        "location": "Геопозиция",
-        "poll": "Опрос",
-        "dice": "Кубик",
-    }.get(content_type, content_type)
+def _has_attachment(question: QuestionsTable) -> bool:
+    return bool(
+        question.telegram_chat_id
+        and question.telegram_message_id
+        and question.content_type
+        and question.content_type != "text"
+    )
+
+
+async def _copy_history_message(message: Message, ctx: TelegramContext, question: QuestionsTable) -> bool:
+    if not question.telegram_chat_id or not question.telegram_message_id:
+        return False
+    try:
+        await message.bot.copy_message(
+            chat_id=message.chat.id,
+            from_chat_id=question.telegram_chat_id,
+            message_id=question.telegram_message_id,
+        )
+    except Exception:
+        ctx.logger.exception(
+            "Failed to copy history message question_id=%s chat_id=%s message_id=%s",
+            question.id,
+            question.telegram_chat_id,
+            question.telegram_message_id,
+        )
+        return False
+    return True
 
 
 def _question_text(question: QuestionsTable) -> str:

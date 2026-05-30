@@ -41,6 +41,9 @@ class QuestionsTable(Base):
         Integer, ForeignKey("Users.user_id"), nullable=True)
     author_type: Mapped[str] = mapped_column(Text, nullable=False, default="user")
     text: Mapped[str] = mapped_column(Text, nullable=True)
+    telegram_chat_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     previous_question: Mapped[int] = mapped_column(
         Integer, ForeignKey("Question.id"), nullable=True)
     request: Mapped[int] = mapped_column(
