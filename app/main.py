@@ -1,7 +1,9 @@
+import os
 import asyncio
 import inspect
 
 from config import (
+    BASE_PATH,
     BOT_TOKEN,
     USER_TOKEN,
     main_logger,
@@ -40,7 +42,8 @@ def setup_ai():
 @try_log("Store")
 def setup_store():
     from store.store import Store
-    store = Store(db_path=r"./store/database.db", logger=main_logger)
+    store = Store(db_path=os.path.join(
+        BASE_PATH, "store/database.db"), logger=main_logger)
     store.init_db()
     return store
 

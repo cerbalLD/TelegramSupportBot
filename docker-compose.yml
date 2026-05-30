@@ -12,8 +12,6 @@ services:
     environment:
       TZ: Europe/Moscow
 
-      "DB_PATH": "./store/db.sqlite"
       "TRANSFORMER_NAME": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-      "DB_RAG_PATH": "./ai/my_vector_db"
       "BASE_PATH": "./"
     restart: unless-stopped

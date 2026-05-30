@@ -3,8 +3,10 @@ import os
 import chromadb
 from sentence_transformers import SentenceTransformer
 
+from app.config import BASE_PATH
+
 TRANSFORMER_NAME = os.environ.get("TRANSFORMER_NAME", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-DB_RAG_PATH = os.environ.get("DB_RAG_PATH", "./app/ai/my_vector_db")
+DB_RAG_PATH = os.path.join(BASE_PATH, "ai/my_vector_db")
 
 class RAG():
     def __init__(self):
