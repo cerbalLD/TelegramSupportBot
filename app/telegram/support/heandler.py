@@ -170,7 +170,7 @@ def setup_router() -> Router:
         if request is None:
             await callback.answer("Запрос не найден", show_alert=True)
             return
-        ctx.store.request.update(request_id, status=RequestStatus.CLOSED)
+        ctx.store.request.delete_with_questions(request_id)
         await edit_or_send(callback.message, f"Запрос #{request_id} закрыт.")
         await callback.answer()
 

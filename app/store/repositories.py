@@ -124,7 +124,37 @@ class RequestRepository(Repository[RequestTable]):
 
     def count_need_operator(self) -> int:
         with Session(self.engine) as s:
-            return s.query(RequestTable).filter(RequestTable.status > 0).count()
+            return s.query(RequestTable).filter(
+                RequestTable.status > 0,
+                RequestTable.status != 3,
+            ).count()
+
+    def delete_with_questions(self, request_id: int) -> bool:
+        with Session(self.engine) as s:
+            request = s.get(RequestTable, request_id)
+            if not request:
+                return False
+
+            question_ids = [
+                row.id
+                for row in s.query(QuestionsTable.id)
+                .filter(QuestionsTable.request == request_id)
+                .all()
+            ]
+            if question_ids:
+                s.query(RequestTable).filter(
+                    RequestTable.last_message_id.in_(question_ids)
+                ).update({RequestTable.last_message_id: None}, synchronize_session=False)
+                s.query(QuestionsTable).filter(
+                    QuestionsTable.previous_question.in_(question_ids)
+                ).update({QuestionsTable.previous_question: None}, synchronize_session=False)
+                s.query(QuestionsTable).filter(
+                    QuestionsTable.id.in_(question_ids)
+                ).delete(synchronize_session=False)
+
+            s.delete(request)
+            s.commit()
+            return True
 
 
 class QuestionsRepository(Repository[QuestionsTable]):
